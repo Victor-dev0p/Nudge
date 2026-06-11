@@ -1,6 +1,11 @@
-"use client"
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import { Target, Flame, Users, Check, AlertCircle, TrendingUp, Clock } from 'lucide-react';
+import { Target, Flame, Calendar, Zap, CheckCircle, Clock, TrendingUp, Users } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useDisruption } from '@/hooks/useDisruption';
+import DisruptionModal from '@/components/disruption/DisruptionModal';
 
 interface DailyTask {
   id: string;
@@ -9,7 +14,10 @@ interface DailyTask {
   completedAt?: Date;
 }
 
-const DailyStreakDashboard: React.FC = () => {
+export default function DailyStreakDashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
   const [tasks, setTasks] = useState<DailyTask[]>([
     { id: '1', text: 'Spend 15 minutes on coding fundamentals', completed: false },
     { id: '2', text: 'Track your progress in writing', completed: false },
@@ -18,6 +26,7 @@ const DailyStreakDashboard: React.FC = () => {
   ]);
 
   const [streak, setStreak] = useState<number>(7);
+  const [partnerName, setPartnerName] = useState<string>('Alex M.');
   const [currentTime] = useState(new Date());
   const [showSlackingWarning, setShowSlackingWarning] = useState(false);
 
@@ -25,6 +34,15 @@ const DailyStreakDashboard: React.FC = () => {
   const totalTasks = tasks.length;
   const progressPercent = (completedCount / totalTasks) * 100;
   const allCompleted = completedCount === totalTasks;
+
+  // Disruption modal integration
+  const { modalProps } = useDisruption({
+    completedTasks: completedCount,
+    totalTasks,
+    currentStreak: streak,
+    partnerName,
+    enabled: true, // Set to false to disable disruptions
+  });
 
   // Check if user is slacking (after 6pm and less than 50% done)
   useEffect(() => {
@@ -34,6 +52,13 @@ const DailyStreakDashboard: React.FC = () => {
     }
   }, [currentTime, progressPercent]);
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
   const handleTaskToggle = (taskId: string) => {
     setTasks(tasks.map(task => 
       task.id === taskId 
@@ -42,17 +67,24 @@ const DailyStreakDashboard: React.FC = () => {
     ));
   };
 
-  // Format date
   const formatDate = (date: Date) => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
   };
 
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 sm:p-6 md:p-8">
       
-      {/* Streak Fire Background */}
+      {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {allCompleted && (
           <>
@@ -120,7 +152,7 @@ const DailyStreakDashboard: React.FC = () => {
         {showSlackingWarning && !allCompleted && (
           <div className="bg-red-500/10 backdrop-blur-sm border-2 border-red-500/50 rounded-xl sm:rounded-2xl p-4 sm:p-5 mb-6 animate-pulse">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
+              <Clock className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h3 className="text-red-300 font-bold text-sm sm:text-base mb-1">⚠️ You're Slacking</h3>
                 <p className="text-red-200/90 text-xs sm:text-sm">
@@ -181,7 +213,7 @@ const DailyStreakDashboard: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white/5 rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <Check className="w-4 h-4 text-green-400" />
+                    <CheckCircle className="w-4 h-4 text-green-400" />
                     <span className="text-xs text-gray-400">Completed</span>
                   </div>
                   <div className="text-2xl font-bold text-white">{completedCount}</div>
@@ -208,7 +240,7 @@ const DailyStreakDashboard: React.FC = () => {
                     <Users className="w-4 h-4 text-yellow-400" />
                     <span className="text-xs text-gray-400">Partner</span>
                   </div>
-                  <div className="text-sm font-bold text-white truncate">Alex M.</div>
+                  <div className="text-sm font-bold text-white truncate">{partnerName}</div>
                 </div>
               </div>
             </div>
@@ -225,7 +257,7 @@ const DailyStreakDashboard: React.FC = () => {
             
             {allCompleted && (
               <div className="flex items-center gap-2 bg-green-500/20 px-4 py-2 rounded-full border border-green-500/50">
-                <Check className="w-5 h-5 text-green-400" />
+                <CheckCircle className="w-5 h-5 text-green-400" />
                 <span className="text-green-300 font-semibold text-sm">All Done!</span>
               </div>
             )}
@@ -253,7 +285,7 @@ const DailyStreakDashboard: React.FC = () => {
                     }`}
                   >
                     {task.completed && (
-                      <Check className="w-5 h-5 sm:w-6 sm:h-6 text-white animate-scale-in" />
+                      <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     )}
                   </button>
 
@@ -281,11 +313,6 @@ const DailyStreakDashboard: React.FC = () => {
                     {task.completed ? '🎯' : '🏹'}
                   </div>
                 </div>
-
-                {/* Completion animation overlay */}
-                {task.completed && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-green-500/0 via-green-500/20 to-green-500/0 animate-shine"></div>
-                )}
               </div>
             ))}
           </div>
@@ -321,7 +348,7 @@ const DailyStreakDashboard: React.FC = () => {
                 AM
               </div>
               <div>
-                <div className="text-white font-semibold text-sm sm:text-base">Alex Martinez</div>
+                <div className="text-white font-semibold text-sm sm:text-base">{partnerName}</div>
                 <div className="text-gray-400 text-xs sm:text-sm">Your Accountability Partner</div>
               </div>
             </div>
@@ -338,25 +365,8 @@ const DailyStreakDashboard: React.FC = () => {
 
       </div>
 
-      <style>{`
-        @keyframes scale-in {
-          0% { transform: scale(0); }
-          50% { transform: scale(1.2); }
-          100% { transform: scale(1); }
-        }
-        .animate-scale-in {
-          animation: scale-in 0.3s ease-out;
-        }
-        @keyframes shine {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        .animate-shine {
-          animation: shine 1s ease-out;
-        }
-      `}</style>
+      {/* DISRUPTION MODAL - This is the key addition */}
+      <DisruptionModal {...modalProps} />
     </div>
   );
-};
-
-export default DailyStreakDashboard;
+}

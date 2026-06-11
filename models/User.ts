@@ -6,6 +6,8 @@ export interface IUser {
   email: string;
   password: string;
   name: string;
+  role: 'pro' | 'partner' | 'both';
+  hasCompletedOnboarding: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +43,15 @@ const UserSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
       trim: true,
       minlength: [2, 'Name must be at least 2 characters'],
       maxlength: [50, 'Name cannot exceed 50 characters'],
+    },
+    role: {
+      type: String,
+      enum: ['pro', 'partner', 'both'],
+      default: 'pro',
+    },
+    hasCompletedOnboarding: {
+      type: Boolean,
+      default: false,
     },
   },
   {
