@@ -1,3 +1,4 @@
+// app/api/partners/invite/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -30,7 +31,6 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
 
-    // Get inviter's info
     const inviter = await User.findById(session.user.id);
     if (!inviter) {
       return NextResponse.json(
@@ -39,7 +39,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get inviter's current goal
     const currentGoal = await Goal.findOne({
       userId: session.user.id,
       active: true,
@@ -47,14 +46,11 @@ export async function POST(req: NextRequest) {
 
     const goalText = currentGoal?.goalText || 'their goals';
 
-    // Generate invite token
     const inviteToken = crypto.randomBytes(32).toString('hex');
 
-    // Check if partner user exists
     const partnerUser = await User.findOne({ email: email.toLowerCase() });
 
     if (partnerUser) {
-      // User exists - check if partnership already exists
       const existingPartnership = await Partner.findOne({
         $or: [
           { userId: session.user.id, partnerId: partnerUser._id },
@@ -69,7 +65,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Create pending partnership
       await Partner.create({
         procrastinatorId: session.user.id,
         partnerId: partnerUser._id,
@@ -78,10 +73,9 @@ export async function POST(req: NextRequest) {
         inviteToken,
       });
     } else {
-      // User doesn't exist - create pending partnership with email
       await Partner.create({
         procrastinatorId: session.user.id,
-        partnerId: null, // Will be filled when they signup
+        partnerId: null,
         partnerEmail: email.toLowerCase(),
         type: 'one-way',
         status: 'pending',
@@ -89,7 +83,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Send email
+    // Lazy call — Resend is only instantiated inside sendPartnerInviteEmail at runtime
     const emailResult = await sendPartnerInviteEmail({
       inviterName: inviter.name,
       inviterGoal: goalText,

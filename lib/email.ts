@@ -1,9 +1,8 @@
+// lib/email.ts
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-const FROM_EMAIL = 'StreakArcher <onboarding@resend.dev>'; // Change to your verified domain later
+const FROM_EMAIL = 'StreakArcher <onboarding@resend.dev>';
 
 interface PartnerInviteEmailProps {
   inviterName: string;
@@ -18,6 +17,7 @@ export async function sendPartnerInviteEmail({
   inviteToken,
   partnerEmail,
 }: PartnerInviteEmailProps) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
   const acceptUrl = `${APP_URL}/partner/accept?token=${inviteToken}`;
 
   try {
@@ -25,11 +25,7 @@ export async function sendPartnerInviteEmail({
       from: FROM_EMAIL,
       to: partnerEmail,
       subject: `${inviterName} wants you as their accountability partner 🎯`,
-      html: getPartnerInviteEmailHTML({
-        inviterName,
-        inviterGoal,
-        acceptUrl,
-      }),
+      html: getPartnerInviteEmailHTML({ inviterName, inviterGoal, acceptUrl }),
     });
 
     if (error) {
@@ -60,17 +56,14 @@ export async function sendSlackingNotification({
   totalTasks,
   currentStreak,
 }: SlackingNotificationProps) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
+
   try {
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: partnerEmail,
       subject: `⚠️ ${proName} is slacking on their goals`,
-      html: getSlackingNotificationHTML({
-        proName,
-        completedTasks,
-        totalTasks,
-        currentStreak,
-      }),
+      html: getSlackingNotificationHTML({ proName, completedTasks, totalTasks, currentStreak }),
     });
 
     if (error) {
