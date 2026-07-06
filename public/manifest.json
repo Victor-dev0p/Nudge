@@ -1,24 +1,41 @@
 {
-  "name": "StreakArcher - Hit Your Targets Daily",
-  "short_name": "StreakArcher",
-  "description": "Accountability app that keeps you on track with daily goals and streak tracking",
-  "start_url": "/",
+  "name": "Nudge — Hit Your Targets",
+  "short_name": "Nudge",
+  "description": "Hardcore social accountability. Lock stakes, submit proof, hit your targets.",
+  "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#4f46e5",
   "orientation": "portrait",
+  "background_color": "#0A0A0F",
+  "theme_color": "#0A0A0F",
+  "categories": ["productivity", "lifestyle", "social"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View your active goals and tasks",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pulse",
+      "short_name": "Pulse",
+      "description": "The global accountability feed",
+      "url": "/pulse",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     }
   ]
 }

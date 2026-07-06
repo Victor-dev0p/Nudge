@@ -11,13 +11,15 @@
     "@expo/ngrok": "^4.1.0",
     "bcryptjs": "^3.0.3",
     "expo": "^55.0.9",
+    "firebase": "^12.15.0",
     "lucide-react": "^0.563.0",
     "mongoose": "^9.2.1",
     "next": "16.1.6",
     "next-auth": "^4.24.14",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "resend": "^6.9.3"
+    "resend": "^6.9.3",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
