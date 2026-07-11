@@ -7,6 +7,7 @@ import type { MicroTask, GoalStatus } from "@/types/user";
 interface MicroTaskListProps {
   tasks: MicroTask[];
   status: GoalStatus;
+  onToggle?: (taskId: string, currentStatus: string) => void;
 }
 
 const PROOF_LABELS: Record<MicroTask["proofType"], string> = {
@@ -101,7 +102,7 @@ function TaskStatusIcon({ status, accent }: { status: MicroTask["status"]; accen
   );
 }
 
-export function MicroTaskList({ tasks, status }: MicroTaskListProps) {
+export function MicroTaskList({ tasks, status, onToggle }: MicroTaskListProps) {
   const isWarning = !["active", "completed"].includes(status);
   const accent = isWarning ? colors.amber.DEFAULT : colors.lime.DEFAULT;
 
@@ -141,12 +142,14 @@ export function MicroTaskList({ tasks, status }: MicroTaskListProps) {
         {tasks.map((task, i) => (
           <div
             key={task.id}
+            onClick={() => onToggle?.(task.id, task.status)}
             style={{
               padding: "1rem 1.25rem",
               borderBottom: i < tasks.length - 1 ? `1px solid ${colors.obsidian.border}` : "none",
               display: "flex",
               alignItems: "flex-start",
               gap: "0.875rem",
+              cursor: onToggle ? "pointer" : "default",
             }}
           >
             <TaskStatusIcon status={task.status} accent={accent} />
@@ -176,7 +179,7 @@ export function MicroTaskList({ tasks, status }: MicroTaskListProps) {
                 )}
                 {task.dueAt && task.status === "pending" && (
                   <span style={{ fontSize: "0.7rem", color: isWarning ? colors.amber.DEFAULT : colors.white.ghost }}>
-                    Due {new Date(task.dueAt).toLocaleTimeString('en-US', { hour: "2-digit", minute: "2-digit", hour12: true })} 
+                    Due {new Date(task.dueAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 )}
               </div>

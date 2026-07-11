@@ -1,3 +1,5 @@
+// app/(main)/dashboard/page.tsx
+
 import type { Metadata } from "next";
 import DashboardClient from "./DashboardClient";
 

@@ -15,6 +15,7 @@ import { StepManifest } from "@/components/signup/StepManifest";
 import { StepWeight } from "@/components/signup/StepWeight";
 import { StepAlliance } from "@/components/signup/StepAlliance";
 import { HardcoreParticles, LaunchOverlay, SignupKeyframes } from "@/components/signup/signup.ui";
+import { generateStubTasks } from "@/lib/tasks";
 
 const INITIAL_STATE: SignupFlowState = {
   step: 1,
@@ -187,6 +188,30 @@ export default function SignupClient() {
       };
 
       await setDoc(doc(db, COLLECTIONS.goals(user.uid), goalId), firstGoal);
+
+      // Write 5 stub micro-tasks under the goal
+      const stubTasks = generateStubTasks(user.uid, goalId, flow.goalCategory!);
+      await Promise.all(
+        stubTasks.map((task) =>
+          setDoc(doc(db, COLLECTIONS.tasks(user.uid, goalId), task.id), task)
+        )
+      );
+
+      // If partner email was provided, send invite
+      if (flow.partnerEmail && flow.partnerType === "peer_invite") {
+        await fetch("/api/invites/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            inviterUid: user.uid,
+            inviterName: displayName,
+            inviterUsername: username.toLowerCase(),
+            goalId,
+            goalText: flow.goalText.trim(),
+            partnerEmail: flow.partnerEmail,
+          }),
+        });
+      }
 
       setLaunched(true);
       setTimeout(() => router.push("/dashboard"), 2000);
