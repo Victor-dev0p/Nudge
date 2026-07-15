@@ -1,13 +1,23 @@
-// components/shell/Sidebar.tsx
-
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { colors, motion as motionTokens } from "@/lib/theme";
 import { NAV_ITEMS } from "./ShellNav.config";
 import { NavIcon, NotificationsIcon } from "./ShellIcons";
+
+// Firestore imports
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase"; // <-- Adjust to your Firebase config path
+import { useAuth } from "@/lib/auth"; // <-- Adjust to your Auth Context hook
+
+// Interface matching your Firestore user document structure
+interface UserProfile {
+  displayName: string;
+  username: string;
+  status?: string;
+}
 
 // Mock unread counts — swap for real data when wiring Firestore
 const MOCK_BADGES: Partial<Record<string, number>> = {
@@ -15,8 +25,54 @@ const MOCK_BADGES: Partial<Record<string, number>> = {
   notifications: 7,
 };
 
+// Helper function to extract initials from displayName
+function getInitials(name: string): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return parts[0].slice(0, 2).toUpperCase();
+}
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth(); // <-- Get current logged-in user context
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Stream user profile data from Firestore in real-time
+  useEffect(() => {
+    if (!user?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    const userDocRef = doc(db, "users", user.uid);
+    
+    // onSnapshot keeps the sidebar synchronized if they change their name/status
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setProfile(docSnap.data() as UserProfile);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching user profile:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Fallbacks during loading or if unauthorized
+  const displayName = profile?.displayName || user?.displayName || "Guest";
+  const username = profile?.username || "guest";
+  const initials = getInitials(displayName);
+  const isOnline = profile?.status === "active";
 
   return (
     <aside
@@ -154,7 +210,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* User block at bottom */}
+      {/* Dynamic User block at bottom */}
       <div
         style={{
           padding: "1rem 1.25rem",
@@ -164,43 +220,58 @@ export function Sidebar() {
           gap: "0.75rem",
         }}
       >
-        <div
-          style={{
-            width: "2rem",
-            height: "2rem",
-            borderRadius: "50%",
-            background: `${colors.lime.DEFAULT}18`,
-            border: `1.5px solid ${colors.lime.DEFAULT}40`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "0.65rem",
-            fontWeight: 700,
-            color: colors.lime.DEFAULT,
-            fontFamily: "var(--font-mono)",
-            flexShrink: 0,
-          }}
-        >
-          VO
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: "0.8rem", fontWeight: 600, color: colors.white.DEFAULT, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Victor Okafor
-          </p>
-          <p style={{ fontSize: "0.7rem", color: colors.white.ghost, margin: 0, fontFamily: "var(--font-mono)" }}>
-            @victor_builds
-          </p>
-        </div>
-        <div
-          style={{
-            width: "8px",
-            height: "8px",
-            borderRadius: "50%",
-            background: colors.lime.DEFAULT,
-            flexShrink: 0,
-            boxShadow: `0 0 6px ${colors.lime.DEFAULT}`,
-          }}
-        />
+        {loading ? (
+          // Simple Skeleton Loader while fetching Firestore profile
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%", animation: "pulse 1.5s infinite" }}>
+            <div style={{ width: "2rem", height: "2rem", borderRadius: "50%", background: colors.obsidian.elevated }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ height: "0.75rem", width: "60%", background: colors.obsidian.elevated, borderRadius: "4px", marginBottom: "4px" }} />
+              <div style={{ height: "0.6rem", width: "40%", background: colors.obsidian.elevated, borderRadius: "4px" }} />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              style={{
+                width: "2rem",
+                height: "2rem",
+                borderRadius: "50%",
+                background: `${colors.lime.DEFAULT}18`,
+                border: `1.5px solid ${colors.lime.DEFAULT}40`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "0.65rem",
+                fontWeight: 700,
+                color: colors.lime.DEFAULT,
+                fontFamily: "var(--font-mono)",
+                flexShrink: 0,
+              }}
+            >
+              {initials}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: "0.8rem", fontWeight: 600, color: colors.white.DEFAULT, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayName}
+              </p>
+              <p style={{ fontSize: "0.7rem", color: colors.white.ghost, margin: 0, fontFamily: "var(--font-mono)" }}>
+                @{username}
+              </p>
+            </div>
+            {isOnline && (
+              <div
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  background: colors.lime.DEFAULT,
+                  flexShrink: 0,
+                  boxShadow: `0 0 6px ${colors.lime.DEFAULT}`,
+                }}
+              />
+            )}
+          </>
+        )}
       </div>
     </aside>
   );

@@ -1,5 +1,11 @@
 // types/messages.ts
 
+export interface ReplyPreview {
+  id: string;
+  content: string;
+  senderName: string;
+}
+
 export interface ParticipantProfile {
   uid: string;
   displayName: string;
@@ -9,25 +15,26 @@ export interface ParticipantProfile {
 }
 
 export interface ChatThread {
-  id: string;                        // sorted uid pair: "uid1_uid2"
-  participantIds: string[];          // [uid1, uid2]
-  participants: ParticipantProfile[]; // full profile of BOTH users
+  id: string;
+  participantIds: string[];
+  participants: ParticipantProfile[];
   lastMessage: string;
   lastMessageAt: number;
   unreadCount: number;
   updatedAt: number;
 }
 
-// Derived at runtime — never stored in Firestore
 export interface ResolvedThread extends ChatThread {
-  partner: ParticipantProfile;       // the OTHER user, not me
+  partner: ParticipantProfile;
 }
 
 export interface ChatMessage {
   id: string;
   senderId: string;
-  type: "text" | "proof_card" | "system";
+  type: "text" | "proof_card" | "system" | "media";
   content?: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
   sentAt: number;
   readAt?: number;
   proofCard?: ProofCardPayload;
@@ -36,10 +43,12 @@ export interface ChatMessage {
   originalContent?: string;
   // Delete
   deletedForEveryone?: boolean;
-  deletedFor?: string[];           // UIDs who soft-deleted this message
+  deletedFor?: string[];
   // View once
   viewOnce?: boolean;
-  viewedBy?: string[];             // UIDs who have viewed it
+  viewedBy?: string[];
+  // Reply
+  replyTo?: ReplyPreview;
 }
 
 export interface ProofCardPayload {
@@ -58,12 +67,10 @@ export const CHAT_COLLECTIONS = {
   messages: (chatId: string) => `chats/${chatId}/messages`,
 } as const;
 
-// Always produces the same ID regardless of which user initiates
 export function getChatId(uid1: string, uid2: string): string {
   return [uid1, uid2].sort().join("_");
 }
 
-// Resolve which participant is "the partner" from the current user's perspective
 export function resolvePartner(
   thread: ChatThread,
   currentUid: string
