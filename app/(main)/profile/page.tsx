@@ -1,13 +1,13 @@
-// app/(app)/profile/page.tsx
+// app/(main)/profile/page.tsx
 
 import type { Metadata } from "next";
-import ProfileClient from "./ProfileClient";
+import OwnProfileClient from "./OwnProfileClient";
 
 export const metadata: Metadata = {
   title: "Profile — Nudge",
-  description: "Your growth journey, public stats, and accountability record.",
+  description: "Your growth journey, goals, and accountability record.",
 };
 
 export default function ProfilePage() {
-  return <ProfileClient />;
+  return <OwnProfileClient />;
 }
