@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useRef } from "react";
+import React from "react";
 import Image from "next/image";
 import { colors, tierColors, motion as motionTokens } from "@/lib/theme";
 import type { NudgeUser } from "@/types/user";
@@ -23,135 +23,84 @@ export function ProfileHeader({
   onAvatarClick,
 }: ProfileHeaderProps) {
   const tc = tierColors[user.activeTier];
-
   const initials = user.displayName
     ? user.displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
 
   return (
-    <div style={{ marginBottom: "1.5rem" }}>
-      {/* Top row: avatar + actions */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "1.25rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+    <div style={{ marginBottom: "1.25rem" }}>
+
+      {/* Row 1: avatar + action button */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.875rem" }}>
 
         {/* Avatar */}
-        <div style={{ position: "relative", flexShrink: 0 }}>
-          <div
-            onClick={isOwnProfile ? onAvatarClick : undefined}
-            style={{
-              width: "5rem", height: "5rem", borderRadius: "50%",
-              overflow: "hidden", cursor: isOwnProfile ? "pointer" : "default",
-              background: `${tc.accent}18`,
-              border: `2px solid ${tc.accent}40`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "1.375rem", fontWeight: 900,
-              color: tc.accent, fontFamily: "var(--font-mono)",
-              position: "relative",
-            }}
-          >
-            {user.avatarUrl ? (
-              <Image
-                src={user.avatarUrl}
-                alt={user.displayName}
-                fill
-                style={{ objectFit: "cover" }}
-              />
-            ) : initials}
+        <div
+          onClick={isOwnProfile ? onAvatarClick : undefined}
+          style={{
+            position: "relative",
+            width: "72px", height: "72px",
+            borderRadius: "50%", overflow: "hidden",
+            cursor: isOwnProfile ? "pointer" : "default",
+            background: `${tc.accent}18`,
+            border: `2.5px solid ${tc.accent}50`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "1.375rem", fontWeight: 900,
+            color: tc.accent, fontFamily: "var(--font-mono)",
+            flexShrink: 0,
+          }}
+        >
+          {user.avatarUrl ? (
+            <Image src={user.avatarUrl} alt={user.displayName} fill style={{ objectFit: "cover" }} />
+          ) : initials}
 
-            {/* Upload overlay */}
-            {isOwnProfile && (
-              <div style={{
-                position: "absolute", inset: 0,
-                background: "rgba(0,0,0,0.5)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                opacity: 0, transition: `opacity ${motionTokens.fast}`,
-                fontSize: "1.25rem",
-                borderRadius: "50%",
-              }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
-              >
-                📷
-              </div>
-            )}
-          </div>
-
-          {/* Upload progress ring */}
+          {/* Upload progress overlay */}
           {uploadProgress !== null && uploadProgress !== undefined && (
-            <div style={{
-              position: "absolute", inset: "-4px",
-              borderRadius: "50%",
-              background: `conic-gradient(${colors.lime.DEFAULT} ${uploadProgress}%, transparent ${uploadProgress}%)`,
-              zIndex: -1,
-            }} />
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", color: colors.lime.DEFAULT, fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+              {uploadProgress}%
+            </div>
+          )}
+
+          {isOwnProfile && uploadProgress === null && (
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.125rem", opacity: 0, transition: `opacity ${motionTokens.fast}`, borderRadius: "50%" }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+            >📷</div>
           )}
         </div>
 
-        {/* Identity */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: "1.375rem", fontWeight: 900, color: colors.white.DEFAULT, letterSpacing: "-0.03em", margin: "0 0 0.125rem" }}>
-            {user.displayName}
-          </h1>
-          <p style={{ fontSize: "0.85rem", color: colors.white.muted, margin: "0 0 0.375rem", fontFamily: "var(--font-mono)" }}>
-            @{user.username}
-          </p>
-          {user.bio && (
-            <p style={{ fontSize: "0.875rem", color: colors.white.muted, margin: "0 0 0.75rem", lineHeight: 1.55 }}>
-              {user.bio}
-            </p>
-          )}
-
-          {/* Social counts */}
-          <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap" }}>
-            {[
-              { label: "Following", value: user.followingCount },
-              { label: "Followers", value: user.followerCount },
-              { label: "Sponsors", value: user.sponseeCount },
-            ].map((s) => (
-              <div key={s.label}>
-                <span style={{ fontSize: "0.9rem", fontWeight: 700, color: colors.white.DEFAULT }}>{s.value}</span>
-                <span style={{ fontSize: "0.75rem", color: colors.white.muted, marginLeft: "0.3rem" }}>{s.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Action button */}
+        {/* Action button top-right like X */}
         {isOwnProfile ? (
           <button
             onClick={onEditClick}
             style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
+              padding: "0.45rem 1rem",
+              borderRadius: "100px",
               border: `1.5px solid ${colors.obsidian.border}`,
               background: "transparent",
-              color: colors.white.muted,
-              fontSize: "0.8rem",
-              fontWeight: 600,
+              color: colors.white.DEFAULT,
+              fontSize: "0.85rem",
+              fontWeight: 700,
               cursor: "pointer",
               fontFamily: "inherit",
               transition: `all ${motionTokens.fast}`,
-              alignSelf: "flex-start",
-              flexShrink: 0,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.lime.DEFAULT; e.currentTarget.style.color = colors.lime.DEFAULT; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.muted; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.DEFAULT; }}
           >
-            Edit Profile
+            Edit profile
           </button>
         ) : (
           <button
             style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              border: `1.5px solid ${colors.lime.DEFAULT}`,
-              background: `${colors.lime.DEFAULT}15`,
-              color: colors.lime.DEFAULT,
-              fontSize: "0.8rem",
+              padding: "0.45rem 1.25rem",
+              borderRadius: "100px",
+              border: "none",
+              background: colors.lime.DEFAULT,
+              color: colors.obsidian.DEFAULT,
+              fontSize: "0.85rem",
               fontWeight: 700,
               cursor: "pointer",
               fontFamily: "inherit",
-              alignSelf: "flex-start",
-              flexShrink: 0,
             }}
           >
             Follow
@@ -159,30 +108,61 @@ export function ProfileHeader({
         )}
       </div>
 
-      {/* Vitals strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.75rem", marginBottom: "1rem" }}>
+      {/* Row 2: name + handle */}
+      <div style={{ marginBottom: "0.625rem" }}>
+        <h1 style={{ fontSize: "1.125rem", fontWeight: 900, color: colors.white.DEFAULT, letterSpacing: "-0.02em", margin: "0 0 0.125rem" }}>
+          {user.displayName}
+        </h1>
+        <p style={{ fontSize: "0.85rem", color: colors.white.muted, margin: 0, fontFamily: "var(--font-mono)" }}>
+          @{user.username}
+        </p>
+      </div>
+
+      {/* Row 3: bio */}
+      {user.bio && (
+        <p style={{ fontSize: "0.875rem", color: colors.white.DEFAULT, lineHeight: 1.55, margin: "0 0 0.75rem" }}>
+          {user.bio}
+        </p>
+      )}
+
+      {/* Row 4: social counts — INLINE like X */}
+      <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", marginBottom: "1rem", flexWrap: "wrap" }}>
         {[
-          { label: "Best Streak",     value: `${user.totalStreak}d`,                   accent: colors.lime.DEFAULT  },
-          { label: "Completion",      value: `${user.lifetimeCompletionRate}%`,          accent: colors.lime.DEFAULT  },
-          { label: "Total Earned",    value: `₦${(user.totalEarned / 100).toLocaleString()}`, accent: colors.amber.DEFAULT },
-        ].map((v) => (
-          <div key={v.label} style={{ padding: "0.875rem", background: colors.obsidian.surface, border: `1px solid ${colors.obsidian.border}`, borderRadius: "12px", textAlign: "center" }}>
-            <p style={{ fontSize: "1.375rem", fontWeight: 900, color: v.accent, margin: "0 0 0.2rem", letterSpacing: "-0.02em", fontFamily: "var(--font-display)" }}>{v.value}</p>
-            <p style={{ fontSize: "0.7rem", color: colors.white.muted, margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{v.label}</p>
+          { value: user.followingCount, label: "Following" },
+          { value: user.followerCount,  label: "Followers" },
+          { value: user.sponseeCount,   label: "Sponsors"  },
+        ].map((s) => (
+          <div key={s.label} style={{ display: "flex", alignItems: "baseline", gap: "0.3rem" }}>
+            <span style={{ fontSize: "0.95rem", fontWeight: 700, color: colors.white.DEFAULT }}>{s.value}</span>
+            <span style={{ fontSize: "0.8rem", color: colors.white.muted }}>{s.label}</span>
           </div>
         ))}
       </div>
 
-      {/* Tier badges */}
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <span style={{ padding: "0.3rem 0.75rem", borderRadius: "100px", background: `${tc.accent}12`, border: `1px solid ${tc.accent}30`, fontSize: "0.7rem", fontWeight: 700, color: tc.accent, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-mono)" }}>
+      {/* Row 5: tier badge */}
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <span style={{ padding: "0.25rem 0.75rem", borderRadius: "100px", background: `${tc.accent}12`, border: `1px solid ${tc.accent}30`, fontSize: "0.7rem", fontWeight: 700, color: tc.accent, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-mono)" }}>
           {tc.label}
         </span>
         {user.totalStreak >= 7 && (
-          <span style={{ padding: "0.3rem 0.75rem", borderRadius: "100px", background: `${colors.lime.DEFAULT}12`, border: `1px solid ${colors.lime.DEFAULT}30`, fontSize: "0.7rem", fontWeight: 700, color: colors.lime.DEFAULT, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-mono)" }}>
-            {user.totalStreak}d Streak
+          <span style={{ padding: "0.25rem 0.75rem", borderRadius: "100px", background: `${colors.lime.DEFAULT}12`, border: `1px solid ${colors.lime.DEFAULT}30`, fontSize: "0.7rem", fontWeight: 700, color: colors.lime.DEFAULT, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-mono)" }}>
+            {user.totalStreak}d Streak 🔥
           </span>
         )}
+      </div>
+
+      {/* Row 6: vitals strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.625rem", marginBottom: "0.25rem" }}>
+        {[
+          { label: "Best Streak",  value: `${user.totalStreak}d`,                              accent: colors.lime.DEFAULT  },
+          { label: "Completion",   value: `${user.lifetimeCompletionRate}%`,                   accent: colors.lime.DEFAULT  },
+          { label: "Earned",       value: `₦${(user.totalEarned / 100).toLocaleString()}`,     accent: colors.amber.DEFAULT },
+        ].map((v) => (
+          <div key={v.label} style={{ padding: "0.75rem 0.5rem", background: colors.obsidian.surface, border: `1px solid ${colors.obsidian.border}`, borderRadius: "12px", textAlign: "center" }}>
+            <p style={{ fontSize: "1.125rem", fontWeight: 900, color: v.accent, margin: "0 0 0.15rem", letterSpacing: "-0.02em", fontFamily: "var(--font-display)" }}>{v.value}</p>
+            <p style={{ fontSize: "0.62rem", color: colors.white.muted, margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{v.label}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
