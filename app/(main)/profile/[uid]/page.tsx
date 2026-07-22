@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   title: "Profile — Nudge",
 };
 
-export default function UserProfilePage({ params }: { params: { uid: string } }) {
-  return <UserProfileClient uid={params.uid} />;
+export default async function UserProfilePage({ params }: { params: Promise<{ uid: string }> }) {
+  const { uid } = await params;
+  console.log("PROFILE PAGE UID:", uid); // TEMP DEBUG
+  return <UserProfileClient uid={uid} />;
 }

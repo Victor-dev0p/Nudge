@@ -1,12 +1,9 @@
 // lib/useMessages.ts
-// Key fix: useThreadsTyping now uses a single batched approach instead of
-// N separate onSnapshot listeners (one per thread), which was causing slow
-// load and excessive Firestore reads with multiple threads.
 
 import { useEffect, useState } from "react";
 import {
   collection, query, where, orderBy, onSnapshot,
-  addDoc, updateDoc, doc, setDoc, getDoc, deleteField, arrayUnion,
+  addDoc, updateDoc, doc, setDoc, getDoc, deleteField, arrayUnion, increment,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
@@ -68,38 +65,85 @@ export function useMessages(chatId: string | null) {
   return { messages, loading };
 }
 
-// ─── Send text ────────────────────────────────────────────────────────────────
+// ─── Send text — increments unread for RECIPIENT only ────────────────────────
 export async function sendMessage(
-  chatId: string, senderId: string, content: string,
+  chatId: string,
+  senderId: string,
+  content: string,
   replyTo?: { id: string; content: string; senderName: string }
 ) {
   if (!content.trim()) return;
+
+  // Get the chat to find the recipient UID
+  const chatSnap = await getDoc(doc(db, CHAT_COLLECTIONS.chats, chatId));
+  const participantIds: string[] = chatSnap.data()?.participantIds ?? [];
+  const recipientUid = participantIds.find((id) => id !== senderId);
+
   await addDoc(collection(db, CHAT_COLLECTIONS.messages(chatId)), {
-    senderId, type: "text", content: content.trim(),
-    sentAt: Date.now(), ...(replyTo ? { replyTo } : {}),
+    senderId, type: "text",
+    content: content.trim(),
+    sentAt: Date.now(),
+    ...(replyTo ? { replyTo } : {}),
   });
+
+  // Update thread: last message + increment unread for recipient
+  // unreadCountFor is a map: { [uid]: count } so each user has their own unread count
   await updateDoc(doc(db, CHAT_COLLECTIONS.chats, chatId), {
-    lastMessage: content.trim(), lastMessageAt: Date.now(), updatedAt: Date.now(),
+    lastMessage: content.trim(),
+    lastMessageAt: Date.now(),
+    updatedAt: Date.now(),
+    ...(recipientUid ? { [`unreadCountFor.${recipientUid}`]: increment(1) } : {}),
   });
+
+  // Send push notification to recipient
+  if (recipientUid) {
+    try {
+      await fetch("/api/notifications/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientUid,
+          title: "New message on Nudge",
+          body: content.trim().slice(0, 80),
+          url: "/messages",
+        }),
+      });
+    } catch {
+      // Non-critical — push failing shouldn't block message send
+    }
+  }
 }
 
 // ─── Send view-once ───────────────────────────────────────────────────────────
 export async function sendViewOnceMessage(
-  chatId: string, senderId: string, content: string,
+  chatId: string,
+  senderId: string,
+  content: string,
   replyTo?: { id: string; content: string; senderName: string }
 ) {
   if (!content.trim()) return;
+
+  const chatSnap = await getDoc(doc(db, CHAT_COLLECTIONS.chats, chatId));
+  const participantIds: string[] = chatSnap.data()?.participantIds ?? [];
+  const recipientUid = participantIds.find((id) => id !== senderId);
+
   await addDoc(collection(db, CHAT_COLLECTIONS.messages(chatId)), {
-    senderId, type: "text", content: content.trim(),
-    sentAt: Date.now(), viewOnce: true, viewedBy: [],
+    senderId, type: "text",
+    content: content.trim(),
+    sentAt: Date.now(),
+    viewOnce: true, viewedBy: [],
     ...(replyTo ? { replyTo } : {}),
   });
+
   await updateDoc(doc(db, CHAT_COLLECTIONS.chats, chatId), {
-    lastMessage: "View once message", lastMessageAt: Date.now(), updatedAt: Date.now(),
+    lastMessage: "View once message",
+    lastMessageAt: Date.now(),
+    updatedAt: Date.now(),
+    ...(recipientUid ? { [`unreadCountFor.${recipientUid}`]: increment(1) } : {}),
   });
 }
 
-// ─── Upload media ─────────────────────────────────────────────────────────────
+// ─── Send media ───────────────────────────────────────────────────────────────
 export async function uploadChatMedia(
   chatId: string, file: File, onProgress?: (pct: number) => void
 ): Promise<string> {
@@ -117,20 +161,25 @@ export async function uploadChatMedia(
   });
 }
 
-// ─── Send media ───────────────────────────────────────────────────────────────
 export async function sendMediaMessage(
   chatId: string, senderId: string, mediaUrl: string,
   mediaType: "image" | "video", viewOnce = false,
   replyTo?: { id: string; content: string; senderName: string }
 ) {
+  const chatSnap = await getDoc(doc(db, CHAT_COLLECTIONS.chats, chatId));
+  const participantIds: string[] = chatSnap.data()?.participantIds ?? [];
+  const recipientUid = participantIds.find((id) => id !== senderId);
+
   await addDoc(collection(db, CHAT_COLLECTIONS.messages(chatId)), {
     senderId, type: "media", mediaUrl, mediaType,
     sentAt: Date.now(), viewOnce, viewedBy: [],
     ...(replyTo ? { replyTo } : {}),
   });
+
   await updateDoc(doc(db, CHAT_COLLECTIONS.chats, chatId), {
     lastMessage: mediaType === "image" ? "📷 Photo" : "🎥 Video",
     lastMessageAt: Date.now(), updatedAt: Date.now(),
+    ...(recipientUid ? { [`unreadCountFor.${recipientUid}`]: increment(1) } : {}),
   });
 }
 
@@ -156,7 +205,7 @@ export async function verifyProofCard(
   });
 }
 
-// ─── Edit ─────────────────────────────────────────────────────────────────────
+// ─── Edit / Delete / View once ────────────────────────────────────────────────
 export async function editMessage(
   chatId: string, messageId: string, newContent: string, originalContent: string
 ) {
@@ -165,7 +214,6 @@ export async function editMessage(
   });
 }
 
-// ─── Delete ───────────────────────────────────────────────────────────────────
 export async function deleteForMe(chatId: string, messageId: string, uid: string) {
   await updateDoc(doc(db, CHAT_COLLECTIONS.messages(chatId), messageId), {
     deletedFor: arrayUnion(uid),
@@ -178,14 +226,22 @@ export async function deleteForEveryone(chatId: string, messageId: string) {
   });
 }
 
-// ─── View once ────────────────────────────────────────────────────────────────
 export async function markViewed(chatId: string, messageId: string, uid: string) {
   await updateDoc(doc(db, CHAT_COLLECTIONS.messages(chatId), messageId), {
     viewedBy: arrayUnion(uid),
   });
 }
 
-// ─── Typing ───────────────────────────────────────────────────────────────────
+// ─── Mark thread as read — resets THIS user's unread count ───────────────────
+export async function markThreadRead(chatId: string, uid: string) {
+  try {
+    await updateDoc(doc(db, CHAT_COLLECTIONS.chats, chatId), {
+      [`unreadCountFor.${uid}`]: 0,
+    });
+  } catch { /* non-critical */ }
+}
+
+// ─── Typing indicator ─────────────────────────────────────────────────────────
 export async function setTyping(chatId: string, uid: string, isTyping: boolean) {
   try {
     await updateDoc(doc(db, CHAT_COLLECTIONS.chats, chatId), {
@@ -194,7 +250,6 @@ export async function setTyping(chatId: string, uid: string, isTyping: boolean) 
   } catch { /* non-critical */ }
 }
 
-// Listen to partner typing in the OPEN thread
 export function usePartnerTyping(chatId: string | null, partnerUid: string | null): boolean {
   const [isTyping, setIsTyping] = useState(false);
   useEffect(() => {
@@ -207,20 +262,11 @@ export function usePartnerTyping(chatId: string | null, partnerUid: string | nul
   return isTyping;
 }
 
-// ─── useThreadsTyping — OPTIMIZED ────────────────────────────────────────────
-// Previous version opened N separate onSnapshot listeners (one per thread).
-// This version reuses the SAME thread list listener already open in useThreads
-// by reading the typing field directly from the thread data we already have.
-// Zero additional Firestore reads.
+// No-op — typing map is now read directly from thread data in the component
 export function useThreadsTyping(
-  threads: Array<{ id: string; partner: { uid: string } | null }>,
-  currentUid: string
+  _threads: Array<{ id: string; partner: { uid: string } | null }>,
+  _currentUid: string
 ): Record<string, boolean> {
-  // This is now derived directly from the thread documents already loaded
-  // by useThreads — no additional listeners needed.
-  // The typing map is computed in MessagesClient from the threads array.
-  // This hook is kept for API compatibility but is now a no-op.
-  // See: ThreadList in MessagesClient reads thread.typing directly.
   return {};
 }
 
@@ -259,7 +305,9 @@ export async function getOrCreateThread(
     participantIds: [currentUid, partnerUid].sort(),
     participants: [currentProfile, partnerProfile],
     lastMessage: "", lastMessageAt: Date.now(),
-    updatedAt: Date.now(), unreadCount: 0,
+    updatedAt: Date.now(),
+    unreadCount: 0,
+    unreadCountFor: {},
   });
 
   return chatId;

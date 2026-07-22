@@ -2,10 +2,12 @@
 
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import { colors, tierColors, motion as motionTokens } from "@/lib/theme";
 import type { NudgeUser } from "@/types/user";
+import { useAuth } from "@/lib/auth";
+import { useIsFollowing, followUser, unfollowUser } from "@/lib/useFollow";
 
 interface ProfileHeaderProps {
   user: NudgeUser;
@@ -22,10 +24,28 @@ export function ProfileHeader({
   onEditClick,
   onAvatarClick,
 }: ProfileHeaderProps) {
+  const { user: authUser } = useAuth();
   const tc = tierColors[user.activeTier];
   const initials = user.displayName
     ? user.displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
+
+  const isFollowing = useIsFollowing(authUser?.uid ?? null, user.uid);
+  const [followLoading, setFollowLoading] = useState(false);
+
+  const handleFollow = async () => {
+    if (!authUser || followLoading) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await unfollowUser(authUser.uid, user.uid);
+      } else {
+        await followUser(authUser.uid, user.uid);
+      }
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
   return (
     <div style={{ marginBottom: "1.25rem" }}>
@@ -49,41 +69,22 @@ export function ProfileHeader({
             flexShrink: 0,
           }}
         >
-          {user.avatarUrl ? (
-            <Image src={user.avatarUrl} alt={user.displayName} fill style={{ objectFit: "cover" }} />
-          ) : initials}
+          {user.avatarUrl
+            ? <Image src={user.avatarUrl} alt={user.displayName} fill style={{ objectFit: "cover" }} />
+            : initials}
 
-          {/* Upload progress overlay */}
           {uploadProgress !== null && uploadProgress !== undefined && (
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", color: colors.lime.DEFAULT, fontFamily: "var(--font-mono)", fontWeight: 700 }}>
               {uploadProgress}%
             </div>
           )}
-
-          {isOwnProfile && uploadProgress === null && (
-            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.125rem", opacity: 0, transition: `opacity ${motionTokens.fast}`, borderRadius: "50%" }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
-            >📷</div>
-          )}
         </div>
 
-        {/* Action button top-right like X */}
+        {/* Action button */}
         {isOwnProfile ? (
           <button
             onClick={onEditClick}
-            style={{
-              padding: "0.45rem 1rem",
-              borderRadius: "100px",
-              border: `1.5px solid ${colors.obsidian.border}`,
-              background: "transparent",
-              color: colors.white.DEFAULT,
-              fontSize: "0.85rem",
-              fontWeight: 700,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              transition: `all ${motionTokens.fast}`,
-            }}
+            style={{ padding: "0.45rem 1rem", borderRadius: "100px", border: `1.5px solid ${colors.obsidian.border}`, background: "transparent", color: colors.white.DEFAULT, fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: `all ${motionTokens.fast}` }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.lime.DEFAULT; e.currentTarget.style.color = colors.lime.DEFAULT; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.DEFAULT; }}
           >
@@ -91,19 +92,23 @@ export function ProfileHeader({
           </button>
         ) : (
           <button
+            onClick={handleFollow}
+            disabled={followLoading}
             style={{
               padding: "0.45rem 1.25rem",
               borderRadius: "100px",
-              border: "none",
-              background: colors.lime.DEFAULT,
-              color: colors.obsidian.DEFAULT,
+              border: isFollowing ? `1.5px solid ${colors.obsidian.border}` : "none",
+              background: isFollowing ? "transparent" : colors.lime.DEFAULT,
+              color: isFollowing ? colors.white.DEFAULT : colors.obsidian.DEFAULT,
               fontSize: "0.85rem",
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: followLoading ? "wait" : "pointer",
               fontFamily: "inherit",
+              opacity: followLoading ? 0.7 : 1,
+              transition: `all ${motionTokens.fast}`,
             }}
           >
-            Follow
+            {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
           </button>
         )}
       </div>
@@ -125,7 +130,7 @@ export function ProfileHeader({
         </p>
       )}
 
-      {/* Row 4: social counts — INLINE like X */}
+      {/* Row 4: social counts — inline like X */}
       <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", marginBottom: "1rem", flexWrap: "wrap" }}>
         {[
           { value: user.followingCount, label: "Following" },
@@ -139,7 +144,7 @@ export function ProfileHeader({
         ))}
       </div>
 
-      {/* Row 5: tier badge */}
+      {/* Row 5: badges */}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <span style={{ padding: "0.25rem 0.75rem", borderRadius: "100px", background: `${tc.accent}12`, border: `1px solid ${tc.accent}30`, fontSize: "0.7rem", fontWeight: 700, color: tc.accent, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "var(--font-mono)" }}>
           {tc.label}
@@ -152,11 +157,11 @@ export function ProfileHeader({
       </div>
 
       {/* Row 6: vitals strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.625rem", marginBottom: "0.25rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.625rem" }}>
         {[
-          { label: "Best Streak",  value: `${user.totalStreak}d`,                              accent: colors.lime.DEFAULT  },
-          { label: "Completion",   value: `${user.lifetimeCompletionRate}%`,                   accent: colors.lime.DEFAULT  },
-          { label: "Earned",       value: `₦${(user.totalEarned / 100).toLocaleString()}`,     accent: colors.amber.DEFAULT },
+          { label: "Best Streak", value: `${user.totalStreak}d`,                           accent: colors.lime.DEFAULT  },
+          { label: "Completion",  value: `${user.lifetimeCompletionRate}%`,                accent: colors.lime.DEFAULT  },
+          { label: "Earned",      value: `₦${(user.totalEarned / 100).toLocaleString()}`, accent: colors.amber.DEFAULT },
         ].map((v) => (
           <div key={v.label} style={{ padding: "0.75rem 0.5rem", background: colors.obsidian.surface, border: `1px solid ${colors.obsidian.border}`, borderRadius: "12px", textAlign: "center" }}>
             <p style={{ fontSize: "1.125rem", fontWeight: 900, color: v.accent, margin: "0 0 0.15rem", letterSpacing: "-0.02em", fontFamily: "var(--font-display)" }}>{v.value}</p>

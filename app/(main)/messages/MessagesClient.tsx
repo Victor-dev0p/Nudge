@@ -4,27 +4,24 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { colors, motion as motionTokens } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import {
   useThreads, useMessages, sendMessage, sendViewOnceMessage,
-  sendMediaMessage, uploadChatMedia,
-  verifyProofCard, setTyping, usePartnerTyping, useThreadsTyping,
-  editMessage, deleteForMe, deleteForEveryone, markViewed,
+  sendMediaMessage, uploadChatMedia, verifyProofCard,
+  setTyping, usePartnerTyping, editMessage,
+  deleteForMe, deleteForEveryone, markViewed,
 } from "@/lib/useMessages";
+import { useThreadUnreadCounts, markThreadRead } from "@/lib/useUnreadMessages";
 import type { ResolvedThread, ChatMessage, ParticipantProfile, ReplyPreview } from "@/types/messages";
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
 export default function MessagesClient() {
   const { user } = useAuth();
   const { threads, loading } = useThreads();
   const [activeThread, setActiveThread] = useState<ResolvedThread | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
-
-  const typingMap = useThreadsTyping(
-    threads.map((t) => ({ id: t.id, partner: t.partner ?? null })),
-    user?.uid ?? ""
-  );
+  const threadUnreads = useThreadUnreadCounts();
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
@@ -34,14 +31,33 @@ export default function MessagesClient() {
     return () => mq.removeEventListener("change", h);
   }, []);
 
+  const handleSelectThread = (thread: ResolvedThread) => {
+    setActiveThread(thread);
+    // Mark as read when opening
+    if (user?.uid) markThreadRead(thread.id, user.uid);
+  };
+
   return (
     <div style={{ height: "100dvh", display: "flex", overflow: "hidden", background: colors.obsidian.DEFAULT }}>
       {(isDesktop || !activeThread) && (
-        <ThreadList threads={threads} loading={loading} activeId={activeThread?.id ?? null} isDesktop={isDesktop} typingMap={typingMap} onSelect={setActiveThread} />
+        <ThreadList
+          threads={threads}
+          loading={loading}
+          activeId={activeThread?.id ?? null}
+          isDesktop={isDesktop}
+          threadUnreads={threadUnreads}
+          onSelect={handleSelectThread}
+        />
       )}
       {(isDesktop || !!activeThread) && (
         activeThread && user ? (
-          <ThreadView thread={activeThread} currentUid={user.uid} currentName={user.displayName ?? "Me"} isDesktop={isDesktop} onBack={() => setActiveThread(null)} />
+          <ThreadView
+            thread={activeThread}
+            currentUid={user.uid}
+            currentName={user.displayName ?? "Me"}
+            isDesktop={isDesktop}
+            onBack={() => setActiveThread(null)}
+          />
         ) : isDesktop ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <p style={{ fontSize: "0.875rem", color: colors.white.ghost }}>Select a conversation</p>
@@ -53,9 +69,9 @@ export default function MessagesClient() {
 }
 
 // ─── Thread List ──────────────────────────────────────────────────────────────
-function ThreadList({ threads, loading, activeId, isDesktop, typingMap, onSelect }: {
+function ThreadList({ threads, loading, activeId, isDesktop, threadUnreads, onSelect }: {
   threads: ResolvedThread[]; loading: boolean; activeId: string | null;
-  isDesktop: boolean; typingMap: Record<string, boolean>;
+  isDesktop: boolean; threadUnreads: Record<string, number>;
   onSelect: (t: ResolvedThread) => void;
 }) {
   return (
@@ -68,41 +84,72 @@ function ThreadList({ threads, loading, activeId, isDesktop, typingMap, onSelect
           ? <div style={{ padding: "2rem", display: "flex", justifyContent: "center" }}><Spinner /></div>
           : threads.length === 0
           ? <div style={{ padding: "2rem 1.25rem", textAlign: "center" }}><p style={{ fontSize: "0.85rem", color: colors.white.ghost, lineHeight: 1.6 }}>No conversations yet.<br />Connect with a partner to start.</p></div>
-          : threads.map((t) => <ThreadRow key={t.id} thread={t} isActive={activeId === t.id} isPartnerTyping={typingMap[t.id] === true} onSelect={onSelect} />)
+          : threads.map((t) => (
+            <ThreadRow
+              key={t.id}
+              thread={t}
+              isActive={activeId === t.id}
+              unreadCount={threadUnreads[t.id] ?? 0}
+              onSelect={onSelect}
+            />
+          ))
         }
       </div>
     </div>
   );
 }
 
-function ThreadRow({ thread, isActive, isPartnerTyping, onSelect }: {
-  thread: ResolvedThread; isActive: boolean; isPartnerTyping: boolean; onSelect: (t: ResolvedThread) => void;
+// ─── Thread Row ───────────────────────────────────────────────────────────────
+function ThreadRow({ thread, isActive, unreadCount, onSelect }: {
+  thread: ResolvedThread; isActive: boolean;
+  unreadCount: number; onSelect: (t: ResolvedThread) => void;
 }) {
+  const router = useRouter();
   const p = thread.partner;
+  const hasUnread = unreadCount > 0;
+
   return (
-    <button onClick={() => onSelect(thread)} style={{ width: "100%", padding: "0.875rem 1.25rem", background: isActive ? `${colors.lime.DEFAULT}08` : "transparent", border: "none", borderLeft: `2px solid ${isActive ? colors.lime.DEFAULT : "transparent"}`, textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.75rem", transition: `all ${motionTokens.fast}`, fontFamily: "inherit" }}>
-      <UserAvatar profile={p} size={42} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", borderLeft: `2px solid ${isActive ? colors.lime.DEFAULT : "transparent"}`, background: isActive ? `${colors.lime.DEFAULT}08` : "transparent" }}>
+      {/* Avatar — navigates to profile */}
+      <button
+        onClick={() => router.push(`/profile/${p.uid}`)}
+        style={{ background: "none", border: "none", padding: "0.875rem 0 0.875rem 1.25rem", cursor: "pointer", flexShrink: 0 }}
+      >
+        <UserAvatar profile={p} size={42} />
+      </button>
+
+      {/* Thread content — opens thread */}
+      <button
+        onClick={() => onSelect(thread)}
+        style={{ flex: 1, minWidth: 0, padding: "0.875rem 1.25rem 0.875rem 0.75rem", background: "none", border: "none", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
-          <span style={{ fontSize: "0.9rem", fontWeight: thread.unreadCount > 0 ? 700 : 500, color: colors.white.DEFAULT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "150px" }}>{p?.displayName ?? "Unknown"}</span>
+          <span style={{ fontSize: "0.9rem", fontWeight: hasUnread ? 700 : 500, color: colors.white.DEFAULT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "150px" }}>
+            {p?.displayName ?? "Unknown"}
+          </span>
           <span style={{ fontSize: "0.7rem", color: colors.white.ghost, flexShrink: 0 }}>{formatTime(thread.lastMessageAt)}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          {isPartnerTyping
-            ? <span style={{ fontSize: "0.78rem", color: colors.lime.DEFAULT, display: "flex", alignItems: "center", gap: "0.375rem" }}><TypingDots small /> typing...</span>
-            : <span style={{ fontSize: "0.78rem", color: colors.white.ghost, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{thread.lastMessage || "No messages yet"}</span>
-          }
-          {thread.unreadCount > 0 && <span style={{ marginLeft: "0.5rem", minWidth: "18px", height: "18px", borderRadius: "50%", background: colors.lime.DEFAULT, color: colors.obsidian.DEFAULT, fontSize: "0.6rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{thread.unreadCount}</span>}
+          <span style={{ fontSize: "0.78rem", color: hasUnread ? colors.white.DEFAULT : colors.white.ghost, fontWeight: hasUnread ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {thread.lastMessage || "No messages yet"}
+          </span>
+          {hasUnread && (
+            <span style={{ marginLeft: "0.5rem", minWidth: "20px", height: "20px", borderRadius: "50%", background: colors.lime.DEFAULT, color: colors.obsidian.DEFAULT, fontSize: "0.65rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
 // ─── Thread View ──────────────────────────────────────────────────────────────
 function ThreadView({ thread, currentUid, currentName, isDesktop, onBack }: {
-  thread: ResolvedThread; currentUid: string; currentName: string; isDesktop: boolean; onBack: () => void;
+  thread: ResolvedThread; currentUid: string; currentName: string;
+  isDesktop: boolean; onBack: () => void;
 }) {
+  const router = useRouter();
   const { messages, loading } = useMessages(thread.id);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -155,7 +202,7 @@ function ThreadView({ thread, currentUid, currentName, isDesktop, onBack }: {
       const url = await uploadChatMedia(thread.id, file, setUploadProgress);
       await sendMediaMessage(thread.id, currentUid, url, isVideo ? "video" : "image", viewOnce, replyTo ?? undefined);
       setUploadProgress(null); setViewOnce(false); setReplyTo(null);
-    } catch { setUploadProgress(null); alert("Upload failed. Please try again."); }
+    } catch { setUploadProgress(null); alert("Upload failed."); }
     e.target.value = "";
   };
 
@@ -163,6 +210,10 @@ function ThreadView({ thread, currentUid, currentName, isDesktop, onBack }: {
     const preview = msg.type === "media" ? (msg.mediaType === "image" ? "📷 Photo" : "🎥 Video") : msg.content ?? "";
     setReplyTo({ id: msg.id, content: preview.slice(0, 80), senderName });
   }, []);
+
+  const navigateToPartnerProfile = () => {
+    if (partner?.uid) router.push(`/profile/${partner.uid}`);
+  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden", minWidth: 0 }}>
@@ -173,8 +224,12 @@ function ThreadView({ thread, currentUid, currentName, isDesktop, onBack }: {
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12 4L6 10L12 16" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         )}
-        <UserAvatar profile={partner} size={36} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Avatar — tappable → partner profile */}
+        <button onClick={navigateToPartnerProfile} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}>
+          <UserAvatar profile={partner} size={36} />
+        </button>
+        {/* Name — also tappable */}
+        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={navigateToPartnerProfile}>
           <p style={{ fontSize: "0.9rem", fontWeight: 700, color: colors.white.DEFAULT, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{partner?.displayName ?? "Unknown"}</p>
           <p style={{ fontSize: "0.72rem", color: colors.white.ghost, margin: 0, fontFamily: "var(--font-mono)" }}>
             @{partner?.username}{" "}
@@ -183,24 +238,21 @@ function ThreadView({ thread, currentUid, currentName, isDesktop, onBack }: {
             </span>
           </p>
         </div>
-        <button
-          style={{ background: "none", border: `1px solid ${colors.obsidian.border}`, borderRadius: "8px", padding: "0.35rem 0.7rem", color: colors.white.ghost, fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit" }}
+        <button style={{ background: "none", border: `1px solid ${colors.obsidian.border}`, borderRadius: "8px", padding: "0.35rem 0.7rem", color: colors.white.ghost, fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit" }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.status.danger; e.currentTarget.style.color = colors.status.danger; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.ghost; }}
-        >🛡 Report</button>
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.ghost; }}>
+          🛡 Report
+        </button>
       </div>
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1rem 0.5rem", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-        {loading
-          ? <div style={{ display: "flex", justifyContent: "center", padding: "2rem" }}><Spinner /></div>
-          : messages.length === 0
-          ? <p style={{ textAlign: "center", color: colors.white.ghost, fontSize: "0.85rem", marginTop: "2rem" }}>No messages yet. Say something.</p>
+        {loading ? <div style={{ display: "flex", justifyContent: "center", padding: "2rem" }}><Spinner /></div>
+          : messages.length === 0 ? <p style={{ textAlign: "center", color: colors.white.ghost, fontSize: "0.85rem", marginTop: "2rem" }}>No messages yet. Say something.</p>
           : messages.map((msg) => {
-              const senderName = msg.senderId === currentUid ? currentName : (partner?.displayName ?? "Them");
-              return <MessageBubble key={msg.id} message={msg} isMe={msg.senderId === currentUid} currentUid={currentUid} chatId={thread.id} senderName={senderName} onReply={handleReply} />;
-            })
-        }
+            const senderName = msg.senderId === currentUid ? currentName : (partner?.displayName ?? "Them");
+            return <MessageBubble key={msg.id} message={msg} isMe={msg.senderId === currentUid} currentUid={currentUid} chatId={thread.id} senderName={senderName} onReply={handleReply} />;
+          })}
         {partnerIsTyping && (
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.25rem 0" }}>
             <TypingDots />
@@ -243,34 +295,10 @@ function ThreadView({ thread, currentUid, currentName, isDesktop, onBack }: {
       {/* Input bar */}
       <div style={{ padding: "0.625rem 0.875rem", paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom))", borderTop: `1px solid ${colors.obsidian.border}`, display: "flex", gap: "0.5rem", alignItems: "center", background: colors.obsidian.surface, flexShrink: 0 }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleMediaSelect} style={{ display: "none" }} />
-
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          style={{ width: "36px", height: "36px", borderRadius: "50%", border: `1px solid ${colors.obsidian.border}`, background: "transparent", color: colors.white.ghost, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: "1rem", transition: `all ${motionTokens.fast}` }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.lime.DEFAULT; e.currentTarget.style.color = colors.lime.DEFAULT; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.ghost; }}
-        >📎</button>
-
-        <button
-          onClick={() => setViewOnce(!viewOnce)}
-          style={{ width: "36px", height: "36px", borderRadius: "50%", border: `1px solid ${viewOnce ? colors.lime.DEFAULT : colors.obsidian.border}`, background: viewOnce ? `${colors.lime.DEFAULT}18` : "transparent", color: viewOnce ? colors.lime.DEFAULT : colors.white.ghost, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: "0.875rem", transition: `all ${motionTokens.fast}` }}
-        >👁</button>
-
-        <input
-          value={text}
-          onChange={(e) => handleTextChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder={viewOnce ? "View once message..." : replyTo ? `Reply to ${replyTo.senderName}...` : "Message..."}
-          style={{ flex: 1, padding: "0.7rem 1rem", background: colors.obsidian.elevated, border: `1px solid ${viewOnce ? colors.lime.DEFAULT + "60" : colors.obsidian.border}`, borderRadius: "22px", color: colors.white.DEFAULT, fontSize: "0.9rem", outline: "none", fontFamily: "inherit", transition: `border-color ${motionTokens.fast}` }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = `${colors.lime.DEFAULT}60`)}
-          onBlur={(e) => (e.currentTarget.style.borderColor = viewOnce ? `${colors.lime.DEFAULT}60` : colors.obsidian.border)}
-        />
-
-        <button
-          onClick={handleSend}
-          disabled={!text.trim() || sending}
-          style={{ width: "40px", height: "40px", borderRadius: "50%", border: "none", background: text.trim() ? colors.lime.DEFAULT : colors.obsidian.elevated, color: text.trim() ? colors.obsidian.DEFAULT : colors.white.ghost, display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "default", transition: `all ${motionTokens.fast}`, flexShrink: 0 }}
-        >
+        <button onClick={() => fileInputRef.current?.click()} style={{ width: "36px", height: "36px", borderRadius: "50%", border: `1px solid ${colors.obsidian.border}`, background: "transparent", color: colors.white.ghost, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: "1rem", transition: `all ${motionTokens.fast}` }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.lime.DEFAULT; e.currentTarget.style.color = colors.lime.DEFAULT; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.obsidian.border; e.currentTarget.style.color = colors.white.ghost; }}>📎</button>
+        <button onClick={() => setViewOnce(!viewOnce)} style={{ width: "36px", height: "36px", borderRadius: "50%", border: `1px solid ${viewOnce ? colors.lime.DEFAULT : colors.obsidian.border}`, background: viewOnce ? `${colors.lime.DEFAULT}18` : "transparent", color: viewOnce ? colors.lime.DEFAULT : colors.white.ghost, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: "0.875rem", transition: `all ${motionTokens.fast}` }}>👁</button>
+        <input value={text} onChange={(e) => handleTextChange(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={viewOnce ? "View once message..." : replyTo ? `Reply to ${replyTo.senderName}...` : "Message..."} style={{ flex: 1, padding: "0.7rem 1rem", background: colors.obsidian.elevated, border: `1px solid ${viewOnce ? colors.lime.DEFAULT + "60" : colors.obsidian.border}`, borderRadius: "22px", color: colors.white.DEFAULT, fontSize: "0.9rem", outline: "none", fontFamily: "inherit", transition: `border-color ${motionTokens.fast}` }} onFocus={(e) => (e.currentTarget.style.borderColor = `${colors.lime.DEFAULT}60`)} onBlur={(e) => (e.currentTarget.style.borderColor = viewOnce ? `${colors.lime.DEFAULT}60` : colors.obsidian.border)} />
+        <button onClick={handleSend} disabled={!text.trim() || sending} style={{ width: "40px", height: "40px", borderRadius: "50%", border: "none", background: text.trim() ? colors.lime.DEFAULT : colors.obsidian.elevated, color: text.trim() ? colors.obsidian.DEFAULT : colors.white.ghost, display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "default", transition: `all ${motionTokens.fast}`, flexShrink: 0 }}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8L14 2L8 14L7 9L2 8Z" fill="currentColor" /></svg>
         </button>
       </div>
@@ -308,99 +336,45 @@ function MessageBubble({ message, isMe, currentUid, chatId, senderName, onReply 
     touchStartY.current = e.touches[0].clientY;
     longPressTimer.current = setTimeout(() => setMenuOpen(true), 500);
   };
-
   const handleTouchMove = (e: React.TouchEvent) => {
     const dx = e.touches[0].clientX - touchStartX.current;
     const dy = Math.abs(e.touches[0].clientY - touchStartY.current);
     if (dy > 10 && longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
     if (dx > 0 && dy < 20) {
       if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-      setSwiping(true);
-      setSwipeX(Math.min(dx, 80));
+      setSwiping(true); setSwipeX(Math.min(dx, 80));
     }
   };
-
   const handleTouchEnd = () => {
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
     if (swipeX >= SWIPE_THRESHOLD) onReply(message, senderName);
-    setSwiping(false);
-    setSwipeX(0);
+    setSwiping(false); setSwipeX(0);
   };
-
   const handleEditSave = async () => {
     if (!editText.trim() || editText === message.content) { setEditing(false); return; }
     await editMessage(chatId, message.id, editText, message.content ?? "");
     setEditing(false);
   };
 
-  // Deleted for everyone
-  if (message.deletedForEveryone) return (
-    <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start" }}>
-      <span style={{ fontSize: "0.78rem", color: colors.white.ghost, fontStyle: "italic", padding: "0.375rem 0.75rem" }}>🚫 Message deleted</span>
-    </div>
-  );
-
-  // Deleted for me
+  if (message.deletedForEveryone) return <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start" }}><span style={{ fontSize: "0.78rem", color: colors.white.ghost, fontStyle: "italic", padding: "0.375rem 0.75rem" }}>🚫 Message deleted</span></div>;
   if (message.deletedFor?.includes(currentUid)) return null;
-
-  // System
-  if (message.type === "system") return (
-    <div style={{ textAlign: "center", padding: "0.5rem 1rem" }}>
-      <span style={{ fontSize: "0.75rem", color: colors.white.ghost, background: colors.obsidian.elevated, padding: "0.375rem 0.75rem", borderRadius: "100px" }}>{message.content}</span>
-    </div>
-  );
-
-  // Proof card
+  if (message.type === "system") return <div style={{ textAlign: "center", padding: "0.5rem 1rem" }}><span style={{ fontSize: "0.75rem", color: colors.white.ghost, background: colors.obsidian.elevated, padding: "0.375rem 0.75rem", borderRadius: "100px" }}>{message.content}</span></div>;
   if (message.type === "proof_card" && message.proofCard) return <ProofCard message={message} chatId={chatId} isMe={isMe} />;
 
   const alreadyViewed = message.viewedBy?.includes(currentUid);
-
-  // View once: receiver not yet viewed
-  if (message.viewOnce && !isMe && !alreadyViewed && !revealed) return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <button onClick={async () => { setRevealed(true); await markViewed(chatId, message.id, currentUid); }} style={{ padding: "0.625rem 1rem", borderRadius: "18px 18px 18px 4px", background: `${colors.lime.DEFAULT}15`, border: `1px solid ${colors.lime.DEFAULT}40`, color: colors.lime.DEFAULT, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        👁 <span>Tap to view</span>
-      </button>
-    </div>
-  );
-
-  // View once: receiver — reveal with 5s countdown
+  if (message.viewOnce && !isMe && !alreadyViewed && !revealed) return <div style={{ display: "flex", justifyContent: "flex-start" }}><button onClick={async () => { setRevealed(true); await markViewed(chatId, message.id, currentUid); }} style={{ padding: "0.625rem 1rem", borderRadius: "18px 18px 18px 4px", background: `${colors.lime.DEFAULT}15`, border: `1px solid ${colors.lime.DEFAULT}40`, color: colors.lime.DEFAULT, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "0.5rem" }}>👁 <span>Tap to view</span></button></div>;
   if (message.viewOnce && !isMe && revealed) return <ViewOnceReveal message={message} isMe={isMe} onExpire={() => setRevealed(false)} />;
-
-  // View once: receiver — already viewed
-  if (message.viewOnce && !isMe && alreadyViewed) return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <span style={{ fontSize: "0.78rem", color: colors.white.ghost, fontStyle: "italic", padding: "0.375rem 0.75rem" }}>👁 Viewed</span>
-    </div>
-  );
-
-  // View once: sender — never show content
-  if (message.viewOnce && isMe) return (
-    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-      <div style={{ padding: "0.625rem 0.875rem", borderRadius: "18px 18px 4px 18px", background: `${colors.lime.DEFAULT}20`, border: `1px solid ${colors.lime.DEFAULT}30` }}>
-        <div style={{ fontSize: "0.65rem", color: colors.lime.DEFAULT, marginBottom: "0.2rem" }}>👁 View once</div>
-        <p style={{ fontSize: "0.875rem", color: colors.white.muted, margin: 0, fontStyle: "italic" }}>{alreadyViewed ? "Viewed by recipient" : "Waiting to be viewed..."}</p>
-        <p style={{ fontSize: "0.62rem", color: colors.white.ghost, margin: "0.25rem 0 0", textAlign: "right" }}>{formatTime(message.sentAt)}</p>
-      </div>
-    </div>
-  );
+  if (message.viewOnce && !isMe && alreadyViewed) return <div style={{ display: "flex", justifyContent: "flex-start" }}><span style={{ fontSize: "0.78rem", color: colors.white.ghost, fontStyle: "italic", padding: "0.375rem 0.75rem" }}>👁 Viewed</span></div>;
+  if (message.viewOnce && isMe) return <div style={{ display: "flex", justifyContent: "flex-end" }}><div style={{ padding: "0.625rem 0.875rem", borderRadius: "18px 18px 4px 18px", background: `${colors.lime.DEFAULT}20`, border: `1px solid ${colors.lime.DEFAULT}30` }}><div style={{ fontSize: "0.65rem", color: colors.lime.DEFAULT, marginBottom: "0.2rem" }}>👁 View once</div><p style={{ fontSize: "0.875rem", color: colors.white.muted, margin: 0, fontStyle: "italic" }}>{alreadyViewed ? "Viewed by recipient" : "Waiting to be viewed..."}</p><p style={{ fontSize: "0.62rem", color: colors.white.ghost, margin: "0.25rem 0 0", textAlign: "right" }}>{formatTime(message.sentAt)}</p></div></div>;
 
   const canEdit = isMe && !message.viewOnce && message.type === "text" && Date.now() - message.sentAt < 15 * 60 * 1000;
   const editMinsLeft = canEdit ? Math.ceil((15 * 60 * 1000 - (Date.now() - message.sentAt)) / 60000) : 0;
 
   return (
-    <div
-      style={{ position: "relative", display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", userSelect: "none" as const }}
+    <div style={{ position: "relative", display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", userSelect: "none" as const }}
       onContextMenu={(e) => { e.preventDefault(); setMenuOpen(true); }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      {/* Swipe reply arrow */}
-      {swipeX > 20 && (
-        <div style={{ position: "absolute", left: isMe ? "auto" : "-28px", right: isMe ? "-28px" : "auto", top: "50%", transform: "translateY(-50%)", opacity: Math.min(swipeX / SWIPE_THRESHOLD, 1), color: colors.lime.DEFAULT, fontSize: "1rem", pointerEvents: "none" }}>↩</div>
-      )}
-
+      onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+      {swipeX > 20 && <div style={{ position: "absolute", left: isMe ? "auto" : "-28px", right: isMe ? "-28px" : "auto", top: "50%", transform: "translateY(-50%)", opacity: Math.min(swipeX / SWIPE_THRESHOLD, 1), color: colors.lime.DEFAULT, fontSize: "1rem", pointerEvents: "none" }}>↩</div>}
       <div style={{ transform: `translateX(${isMe ? -swipeX : swipeX}px)`, transition: swiping ? "none" : `transform 200ms ${motionTokens.easing.spring}`, maxWidth: "72%" }}>
         {editing ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
@@ -412,23 +386,19 @@ function MessageBubble({ message, isMe, currentUid, chatId, senderName, onReply 
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
-            {/* Reply context */}
             {message.replyTo && (
               <div style={{ padding: "0.375rem 0.625rem", background: colors.obsidian.border, borderRadius: "8px", borderLeft: `2px solid ${colors.lime.DEFAULT}`, marginBottom: "0.25rem" }}>
                 <p style={{ fontSize: "0.7rem", fontWeight: 700, color: colors.lime.DEFAULT, margin: "0 0 0.1rem" }}>↩ {message.replyTo.senderName}</p>
                 <p style={{ fontSize: "0.72rem", color: colors.white.ghost, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{message.replyTo.content}</p>
               </div>
             )}
-
-            {/* Bubble */}
             <div style={{ padding: message.type === "media" ? "0.375rem" : "0.625rem 0.875rem", borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: isMe ? `${colors.lime.DEFAULT}20` : colors.obsidian.elevated, border: `1px solid ${isMe ? colors.lime.DEFAULT + "30" : colors.obsidian.border}` }}>
-              {message.type === "media" && message.mediaUrl ? (
-                message.mediaType === "image"
+              {message.type === "media" && message.mediaUrl
+                ? message.mediaType === "image"
                   ? <Image src={message.mediaUrl} alt="Shared image" width={240} height={180} style={{ borderRadius: "12px", objectFit: "cover", display: "block", maxWidth: "100%" }} />
                   : <video src={message.mediaUrl} controls style={{ borderRadius: "12px", maxWidth: "240px", display: "block" }} />
-              ) : (
-                <p style={{ fontSize: "0.875rem", color: colors.white.DEFAULT, margin: 0, lineHeight: 1.5, wordBreak: "break-word" }}>{message.content}</p>
-              )}
+                : <p style={{ fontSize: "0.875rem", color: colors.white.DEFAULT, margin: 0, lineHeight: 1.5, wordBreak: "break-word" }}>{message.content}</p>
+              }
               <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", justifyContent: isMe ? "flex-end" : "flex-start", marginTop: "0.25rem" }}>
                 {message.editedAt && <span style={{ fontSize: "0.6rem", color: colors.white.ghost, fontStyle: "italic" }}>edited</span>}
                 <span style={{ fontSize: "0.62rem", color: colors.white.ghost }}>{formatTime(message.sentAt)}</span>
@@ -437,8 +407,6 @@ function MessageBubble({ message, isMe, currentUid, chatId, senderName, onReply 
           </div>
         )}
       </div>
-
-      {/* Context menu */}
       {menuOpen && !editing && (
         <div ref={menuRef} style={{ position: "absolute", [isMe ? "right" : "left"]: "0", bottom: "calc(100% + 4px)", background: colors.obsidian.elevated, border: `1px solid ${colors.obsidian.border}`, borderRadius: "12px", overflow: "hidden", zIndex: 50, minWidth: "180px", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
           <ContextMenuItem label="↩ Reply" onClick={() => { onReply(message, senderName); setMenuOpen(false); }} />
@@ -451,7 +419,6 @@ function MessageBubble({ message, isMe, currentUid, chatId, senderName, onReply 
   );
 }
 
-// ─── View Once Reveal — 5s countdown ─────────────────────────────────────────
 function ViewOnceReveal({ message, isMe, onExpire }: { message: ChatMessage; isMe: boolean; onExpire: () => void }) {
   const [s, setS] = useState(5);
   useEffect(() => {
@@ -466,15 +433,13 @@ function ViewOnceReveal({ message, isMe, onExpire }: { message: ChatMessage; isM
           ? message.mediaType === "image"
             ? <Image src={message.mediaUrl} alt="View once" width={200} height={160} style={{ borderRadius: "10px", objectFit: "cover" }} />
             : <video src={message.mediaUrl} autoPlay style={{ borderRadius: "10px", maxWidth: "200px" }} />
-          : <p style={{ fontSize: "0.875rem", color: colors.white.DEFAULT, margin: 0, lineHeight: 1.5, paddingRight: "1.5rem" }}>{message.content}</p>
-        }
+          : <p style={{ fontSize: "0.875rem", color: colors.white.DEFAULT, margin: 0, lineHeight: 1.5, paddingRight: "1.5rem" }}>{message.content}</p>}
         <p style={{ fontSize: "0.65rem", color: colors.lime.DEFAULT, margin: "0.375rem 0 0", textAlign: "center" }}>👁 Disappears in {s}s</p>
       </div>
     </div>
   );
 }
 
-// ─── Proof Card ───────────────────────────────────────────────────────────────
 function ProofCard({ message, chatId, isMe }: { message: ChatMessage; chatId: string; isMe: boolean }) {
   const card = message.proofCard!;
   const [acting, setActing] = useState(false);
@@ -499,24 +464,13 @@ function ProofCard({ message, chatId, isMe }: { message: ChatMessage; chatId: st
   );
 }
 
-// ─── Context Menu Item ────────────────────────────────────────────────────────
 function ContextMenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
-  return (
-    <button onClick={onClick} style={{ width: "100%", padding: "0.75rem 1rem", background: "none", border: "none", textAlign: "left" as const, fontSize: "0.85rem", color: danger ? colors.status.danger : colors.white.DEFAULT, cursor: "pointer", fontFamily: "inherit" }} onMouseEnter={(e) => (e.currentTarget.style.background = colors.obsidian.surface)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-      {label}
-    </button>
-  );
+  return <button onClick={onClick} style={{ width: "100%", padding: "0.75rem 1rem", background: "none", border: "none", textAlign: "left" as const, fontSize: "0.85rem", color: danger ? colors.status.danger : colors.white.DEFAULT, cursor: "pointer", fontFamily: "inherit" }} onMouseEnter={(e) => (e.currentTarget.style.background = colors.obsidian.surface)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>{label}</button>;
 }
 
-// ─── Shared ───────────────────────────────────────────────────────────────────
 function TypingDots({ small }: { small?: boolean }) {
   const size = small ? 4 : 5;
-  return (
-    <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>
-      {[0, 1, 2].map((i) => <div key={i} style={{ width: size, height: size, borderRadius: "50%", background: colors.white.ghost, animation: `typingBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />)}
-      <style>{`@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}`}</style>
-    </div>
-  );
+  return <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>{[0, 1, 2].map((i) => <div key={i} style={{ width: size, height: size, borderRadius: "50%", background: colors.white.ghost, animation: `typingBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />)}<style>{`@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}`}</style></div>;
 }
 
 function UserAvatar({ profile, size }: { profile: ParticipantProfile | null; size: number }) {

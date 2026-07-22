@@ -5,6 +5,10 @@
 import React, { useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+import { useAuth } from "@/lib/auth";
+import { useUnreadMessages } from "@/lib/useUnreadMessages";
+import { usePushNotifications } from "@/lib/usePushNotifications";
 
 const DESKTOP_BREAKPOINT = 768;
 const SIDEBAR_WIDTH = "240px";
@@ -15,6 +19,11 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [isDesktop, setIsDesktop] = useState(false);
+  const { user } = useAuth();
+  const unreadCount = useUnreadMessages();
+
+  // Register push notifications for the current user
+  usePushNotifications(user?.uid ?? null);
 
   useEffect(() => {
     const mq = window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT}px)`);
@@ -26,15 +35,12 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div style={{ display: "flex", minHeight: "100dvh" }}>
-      {/* Desktop sidebar */}
-      {isDesktop && <Sidebar />}
+      {isDesktop && <Sidebar unreadCount={unreadCount} />}
 
-      {/* Main content area — offset by sidebar width on desktop */}
       <main
         style={{
           flex: 1,
           marginLeft: isDesktop ? SIDEBAR_WIDTH : "0",
-          // Bottom padding on mobile to clear the bottom nav
           paddingBottom: isDesktop ? "0" : "calc(4rem + env(safe-area-inset-bottom))",
           minWidth: 0,
           minHeight: "100dvh",
@@ -43,8 +49,10 @@ export function AppShell({ children }: AppShellProps) {
         {children}
       </main>
 
-      {/* Mobile bottom nav */}
-      {!isDesktop && <BottomNav />}
+      {!isDesktop && <BottomNav unreadCount={unreadCount} />}
+
+      {/* PWA install prompt — shows on Android automatically, iOS with instructions */}
+      <PWAInstallPrompt />
     </div>
   );
 }

@@ -9,20 +9,18 @@ import { colors, motion as motionTokens } from "@/lib/theme";
 import { NAV_ITEMS } from "./ShellNav.config";
 import { NavIcon } from "./ShellIcons";
 
-const MOCK_BADGES: Partial<Record<string, number>> = {
-  messages: 3,
-};
+interface BottomNavProps {
+  unreadCount: number;
+}
 
-export function BottomNav() {
+export function BottomNav({ unreadCount }: BottomNavProps) {
   const pathname = usePathname();
 
   return (
     <nav
       style={{
         position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
+        bottom: 0, left: 0, right: 0,
         zIndex: 50,
         background: `${colors.obsidian.surface}f2`,
         backdropFilter: "blur(12px)",
@@ -35,7 +33,8 @@ export function BottomNav() {
     >
       {NAV_ITEMS.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-        const badge = MOCK_BADGES[item.key];
+        // Only messages gets a real badge — from live Firestore data
+        const badge = item.key === "messages" && unreadCount > 0 ? unreadCount : null;
 
         return (
           <Link
@@ -55,6 +54,7 @@ export function BottomNav() {
               minWidth: "48px",
             }}
           >
+            {/* Icon with badge */}
             <div style={{ position: "relative" }}>
               <NavIcon
                 icon={item.icon}
@@ -65,11 +65,9 @@ export function BottomNav() {
                 <span
                   style={{
                     position: "absolute",
-                    top: "-4px",
-                    right: "-6px",
-                    width: "14px",
-                    height: "14px",
-                    borderRadius: "50%",
+                    top: "-4px", right: "-6px",
+                    minWidth: "16px", height: "16px",
+                    borderRadius: "100px",
                     background: colors.lime.DEFAULT,
                     fontSize: "0.55rem",
                     fontWeight: 700,
@@ -78,12 +76,15 @@ export function BottomNav() {
                     alignItems: "center",
                     justifyContent: "center",
                     fontFamily: "var(--font-mono)",
+                    padding: "0 3px",
                   }}
                 >
-                  {badge}
+                  {badge > 99 ? "99+" : badge}
                 </span>
               )}
             </div>
+
+            {/* Label */}
             <span
               style={{
                 fontSize: "0.625rem",
@@ -93,6 +94,8 @@ export function BottomNav() {
             >
               {item.label}
             </span>
+
+            {/* Active indicator */}
             {isActive && (
               <div
                 style={{

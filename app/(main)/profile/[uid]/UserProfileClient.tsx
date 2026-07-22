@@ -1,32 +1,47 @@
-// app/(main)/profile/[uid]/UserProfileClient.tsx
-
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/useProfile";
 import { ProfileShell } from "@/components/profile/ProfileShell";
 import { colors } from "@/lib/theme";
-import { useRouter } from "next/navigation";
 
 export default function UserProfileClient({ uid }: { uid: string }) {
-  const { user: authUser } = useAuth();
-  const { user, goals, journal, loading, error } = useProfile(uid);
+  const { user: authUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // If viewing own profile via /profile/[uid], redirect to /profile
-  if (authUser?.uid === uid) {
-    router.replace("/profile");
-    return null;
-  }
+  const isOwnProfile = !authLoading && authUser?.uid === uid;
 
-  if (loading) return <FullPageLoader />;
+  // If viewing own profile via /profile/[uid], redirect to /profile
+  useEffect(() => {
+    if (isOwnProfile) {
+      router.replace("/profile");
+    }
+  }, [isOwnProfile, router]);
+
+  // 1. Wait for Firebase Auth to finish resolving
+  if (authLoading) return <FullPageLoader />;
+
+  // 2. If it's the user's own profile, show loader while redirect completes
+  if (isOwnProfile) return <FullPageLoader />;
+
+  // 3. Auth is resolved and it's another user -> mount data fetcher with guaranteed UID!
+  return <OtherUserProfileDataLoader uid={uid} />;
+}
+
+function OtherUserProfileDataLoader({ uid }: { uid: string }) {
+  const { user, goals, journal, loading: profileLoading, error } = useProfile(uid);
+
+  if (profileLoading) return <FullPageLoader />;
+
   if (error || !user) return <FullPageError message={error ?? "Profile not found."} />;
 
   return (
     <ProfileShell
       user={user}
       goals={goals}
-      journal={journal.filter((e) => e.isPublic)} // enforce public-only for other users
+      journal={journal.filter((e) => e.isPublic)}
       isOwnProfile={false}
     />
   );
